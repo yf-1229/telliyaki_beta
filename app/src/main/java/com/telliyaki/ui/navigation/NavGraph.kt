@@ -14,7 +14,7 @@ import androidx.navigation.compose.navigation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PiNodeNavHost(
+fun NavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier,
 ) {
