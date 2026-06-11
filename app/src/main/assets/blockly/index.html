@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Tello Block Programming</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+    #blocklyDiv {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div id="blocklyDiv"></div>
+
+  <xml id="toolbox" style="display: none">
+    <category name="基本操作" colour="160">
+      <block type="tello_takeoff"></block>
+      <block type="tello_land"></block>
+    </category>
+    <category name="移動" colour="210">
+      <block type="tello_move_forward"></block>
+      <block type="tello_move_back"></block>
+      <block type="tello_move_left"></block>
+      <block type="tello_move_right"></block>
+      <block type="tello_move_up"></block>
+      <block type="tello_move_down"></block>
+    </category>
+    <category name="回転" colour="330">
+      <block type="tello_rotate_cw"></block>
+      <block type="tello_rotate_ccw"></block>
+    </category>
+    <category name="待機" colour="60">
+      <block type="tello_wait"></block>
+    </category>
+    <category name="条件分岐" colour="0">
+      <block type="tello_if_altitude">
+        <field name="THRESHOLD">100</field>
+        <field name="OPERATOR">GT</field>
+      </block>
+    </category>
+    <category name="繰り返し" colour="120">
+      <block type="tello_repeat">
+        <field name="TIMES">3</field>
+      </block>
+    </category>
+  </xml>
+
+
+  <!-- Blockly Core -->
+  <script src="blockly_compressed.js"></script>
+  <script src="blocks_compressed.js"></script>
+  <script src="javascript_compressed.js"></script>
+  <script src="msg/js/ja.js"></script>
+
+  <!-- Tello Custom Blocks & Generator -->
+  <script src="blocks/tello.js"></script>
+  <script src="generators/tello.js"></script>
+
+  <script>
+    var workspace = null;
+
+    function initBlockly() {
+      console.log('initBlockly called');
+      var toolbox = document.getElementById('toolbox');
+      if (!toolbox) {
+        console.error('Toolbox element not found!');
+        return;
+      }
+      console.log('Toolbox found, initializing Blockly...');
+      
+      try {
+        workspace = Blockly.inject('blocklyDiv', {
+          toolbox: toolbox,
+          media: 'media/',
+          grid: {
+            spacing: 20,
+            length: 3,
+            colour: '#ccc',
+            snap: true
+          },
+          zoom: {
+            controls: true,
+            wheel: true,
+            startScale: 1.0,
+            maxScale: 3,
+            minScale: 0.3,
+            scaleSpeed: 1.2
+          },
+          trashcan: true,
+          maxInstances: {
+            'tello_takeoff': 1,
+            'tello_land': 1
+          }
+        });
+        console.log('Blockly initialized successfully');
+
+        // ワークスペース変更時に自動保存
+        workspace.addChangeListener(function(event) {
+          if (event.type !== Blockly.Events.UI) {
+            autoSave();
+          }
+        });
+
+        // 保存済みワークスペースがあれば読み込み
+        loadSavedWorkspace();
+      } catch (e) {
+        console.error('Failed to initialize Blockly:', e);
+      }
+    }
+
+    // ワークスペースをJSONで取得
+    function getWorkspaceJson() {
+      if (!workspace) return '{"type":"sequence","children":[]}';
+      return Blockly.Tello.workspaceToJson(workspace);
+    }
+
+    // ワークスペースをJSONで読み込み
+    function loadWorkspaceJson(jsonString) {
+      if (!workspace) return;
+      try {
+        var data = JSON.parse(jsonString);
+        workspace.clear();
+        Blockly.Events.disable();
+        
+        // プログラムをブロックに変換して配置
+        if (data && data.type === 'sequence' && data.children) {
+          loadBlocksFromJson(data.children, workspace, null);
+        }
+        
+        Blockly.Events.enable();
+      } catch (e) {
+        console.error('Failed to load workspace:', e);
+      }
+    }
+
+    // JSONからブロックを再構築
+    function loadBlocksFromJson(commands, workspace, parentBlock) {
+      var previousBlock = parentBlock;
+      
+      for (var i = 0; i < commands.length; i++) {
+        var cmd = commands[i];
+        var block = createBlockFromJson(cmd, workspace);
+        
+        if (block) {
+          if (previousBlock && previousBlock.nextConnection && block.previousConnection) {
+            previousBlock.nextConnection.connect(block.previousConnection);
+          }
+          
+          // 入れ子ブロックの処理
+          if (cmd.type === 'if_altitude') {
+            if (cmd.true_branch && cmd.true_branch.length > 0) {
+              loadBlocksFromJson(cmd.true_branch, workspace, block.getInput('TRUE_BRANCH').connection);
+            }
+            if (cmd.false_branch && cmd.false_branch.length > 0) {
+              loadBlocksFromJson(cmd.false_branch, workspace, block.getInput('FALSE_BRANCH').connection);
+            }
+          } else if (cmd.type === 'repeat') {
+            if (cmd.body && cmd.body.length > 0) {
+              loadBlocksFromJson(cmd.body, workspace, block.getInput('BODY').connection);
+            }
+          }
+          
+          previousBlock = block;
+        }
+      }
+    }
+
+    // JSONから単一ブロックを作成
+    function createBlockFromJson(cmd, workspace) {
+      var blockType = 'tello_' + cmd.type;
+      var block = workspace.newBlock(blockType);
+      
+      // パラメータ設定
+      if (cmd.distance !== undefined) {
+        block.setFieldValue(cmd.distance, 'DISTANCE');
+      }
+      if (cmd.degrees !== undefined) {
+        block.setFieldValue(cmd.degrees, 'DEGREES');
+      }
+      if (cmd.milliseconds !== undefined) {
+        block.setFieldValue(cmd.milliseconds, 'MILLISECONDS');
+      }
+      if (cmd.threshold !== undefined) {
+        block.setFieldValue(cmd.threshold, 'THRESHOLD');
+      }
+      if (cmd.operator !== undefined) {
+        block.setFieldValue(cmd.operator, 'OPERATOR');
+      }
+      if (cmd.times !== undefined) {
+        block.setFieldValue(cmd.times, 'TIMES');
+      }
+      
+      block.initSvg();
+      block.render();
+      return block;
+    }
+
+    // 自動保存
+    function autoSave() {
+      if (window.AndroidBridge && window.AndroidBridge.autoSave) {
+        var json = getWorkspaceJson();
+        window.AndroidBridge.autoSave(json);
+      }
+    }
+
+    // 保存済みワークスペースを読み込み
+    function loadSavedWorkspace() {
+      if (window.AndroidBridge && window.AndroidBridge.getAutoSavedJson) {
+        var savedJson = window.AndroidBridge.getAutoSavedJson();
+        if (savedJson && savedJson !== '') {
+          loadWorkspaceJson(savedJson);
+        }
+      }
+    }
+
+    // プログラムの実行コマンドを生成
+    function generateExecutionJson() {
+      return getWorkspaceJson();
+    }
+
+    // 入れ子深さをチェック
+    function checkNestingDepth() {
+      var topBlocks = workspace.getTopBlocks(true);
+      var maxDepth = 0;
+      
+      function checkBlock(block, depth) {
+        if (depth > maxDepth) maxDepth = depth;
+        if (depth >= 5) return false; // 5回制限
+        
+        var children = [];
+        if (block.type === 'tello_if_altitude') {
+          var trueInput = block.getInput('TRUE_BRANCH');
+          var falseInput = block.getInput('FALSE_BRANCH');
+          if (trueInput && trueInput.connection.targetBlock()) {
+            children.push(trueInput.connection.targetBlock());
+          }
+          if (falseInput && falseInput.connection.targetBlock()) {
+            children.push(falseInput.connection.targetBlock());
+          }
+        } else if (block.type === 'tello_repeat') {
+          var bodyInput = block.getInput('BODY');
+          if (bodyInput && bodyInput.connection.targetBlock()) {
+            children.push(bodyInput.connection.targetBlock());
+          }
+        }
+        
+        for (var i = 0; i < children.length; i++) {
+          if (!checkBlock(children[i], depth + 1)) return false;
+        }
+        return true;
+      }
+      
+      for (var i = 0; i < topBlocks.length; i++) {
+        if (!checkBlock(topBlocks[i], 0)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // ページ読み込み時に初期化
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('DOMContentLoaded fired');
+      if (typeof Blockly === 'undefined') {
+        console.error('Blockly is not defined!');
+        return;
+      }
+      console.log('Blockly version:', Blockly.VERSION);
+      initBlockly();
+    });
+  </script>
+</body>
+</html>
