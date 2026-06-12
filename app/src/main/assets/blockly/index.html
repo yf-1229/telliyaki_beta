@@ -58,14 +58,10 @@
     </category>
   </xml>
 
-
-  <!-- Blockly Core -->
   <script src="blockly_compressed.js"></script>
   <script src="blocks_compressed.js"></script>
   <script src="javascript_compressed.js"></script>
-  <script src="msg/js/ja.js"></script>
-
-  <!-- Tello Custom Blocks & Generator -->
+  <script src="msg/ja.js"></script>
   <script src="blocks/tello.js"></script>
   <script src="generators/tello.js"></script>
 
@@ -107,27 +103,23 @@
         });
         console.log('Blockly initialized successfully');
 
-        // ワークスペース変更時に自動保存
         workspace.addChangeListener(function(event) {
           if (event.type !== Blockly.Events.UI) {
             autoSave();
           }
         });
 
-        // 保存済みワークスペースがあれば読み込み
         loadSavedWorkspace();
       } catch (e) {
         console.error('Failed to initialize Blockly:', e);
       }
     }
 
-    // ワークスペースをJSONで取得
     function getWorkspaceJson() {
       if (!workspace) return '{"type":"sequence","children":[]}';
       return Blockly.Tello.workspaceToJson(workspace);
     }
 
-    // ワークスペースをJSONで読み込み
     function loadWorkspaceJson(jsonString) {
       if (!workspace) return;
       try {
@@ -135,7 +127,6 @@
         workspace.clear();
         Blockly.Events.disable();
         
-        // プログラムをブロックに変換して配置
         if (data && data.type === 'sequence' && data.children) {
           loadBlocksFromJson(data.children, workspace, null);
         }
@@ -146,7 +137,6 @@
       }
     }
 
-    // JSONからブロックを再構築
     function loadBlocksFromJson(commands, workspace, parentBlock) {
       var previousBlock = parentBlock;
       
@@ -159,7 +149,6 @@
             previousBlock.nextConnection.connect(block.previousConnection);
           }
           
-          // 入れ子ブロックの処理
           if (cmd.type === 'if_altitude') {
             if (cmd.true_branch && cmd.true_branch.length > 0) {
               loadBlocksFromJson(cmd.true_branch, workspace, block.getInput('TRUE_BRANCH').connection);
@@ -178,12 +167,10 @@
       }
     }
 
-    // JSONから単一ブロックを作成
     function createBlockFromJson(cmd, workspace) {
       var blockType = 'tello_' + cmd.type;
       var block = workspace.newBlock(blockType);
       
-      // パラメータ設定
       if (cmd.distance !== undefined) {
         block.setFieldValue(cmd.distance, 'DISTANCE');
       }
@@ -208,7 +195,6 @@
       return block;
     }
 
-    // 自動保存
     function autoSave() {
       if (window.AndroidBridge && window.AndroidBridge.autoSave) {
         var json = getWorkspaceJson();
@@ -216,7 +202,6 @@
       }
     }
 
-    // 保存済みワークスペースを読み込み
     function loadSavedWorkspace() {
       if (window.AndroidBridge && window.AndroidBridge.getAutoSavedJson) {
         var savedJson = window.AndroidBridge.getAutoSavedJson();
@@ -226,19 +211,17 @@
       }
     }
 
-    // プログラムの実行コマンドを生成
     function generateExecutionJson() {
       return getWorkspaceJson();
     }
 
-    // 入れ子深さをチェック
     function checkNestingDepth() {
       var topBlocks = workspace.getTopBlocks(true);
       var maxDepth = 0;
       
       function checkBlock(block, depth) {
         if (depth > maxDepth) maxDepth = depth;
-        if (depth >= 5) return false; // 5回制限
+        if (depth >= 5) return false;
         
         var children = [];
         if (block.type === 'tello_if_altitude') {
@@ -271,7 +254,6 @@
       return true;
     }
 
-    // ページ読み込み時に初期化
     document.addEventListener('DOMContentLoaded', function() {
       console.log('DOMContentLoaded fired');
       if (typeof Blockly === 'undefined') {

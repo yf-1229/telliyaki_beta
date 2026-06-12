@@ -1,7 +1,7 @@
-// Tello ブロック用 JSON ジェネレータ
+// Tello ブロック用 JSON ジェネレータ (Blockly v11.2.0 API)
 'use strict';
 
-Blockly.Tello = new Blockly.Generator('Tello');
+Blockly.Tello = new Blockly.CodeGenerator('Tello');
 
 Blockly.Tello.scrub_ = function(block, code, opt_thisOnly) {
   var nextBlock = block.nextConnection && block.nextConnection.targetBlock();
@@ -10,68 +10,68 @@ Blockly.Tello.scrub_ = function(block, code, opt_thisOnly) {
 };
 
 // 基本操作
-Blockly.Tello['tello_takeoff'] = function(block) {
+Blockly.Tello.forBlock['tello_takeoff'] = function(block, generator) {
   return '{"type":"takeoff"}\n';
 };
 
-Blockly.Tello['tello_land'] = function(block) {
+Blockly.Tello.forBlock['tello_land'] = function(block, generator) {
   return '{"type":"land"}\n';
 };
 
 // 移動
-Blockly.Tello['tello_move_forward'] = function(block) {
-  var distance = block.getFieldValue('DISTANCE');
+Blockly.Tello.forBlock['tello_move_forward'] = function(block, generator) {
+  var distance = generator.getFieldValue(block, 'DISTANCE');
   return '{"type":"move_forward","distance":' + distance + '}\n';
 };
 
-Blockly.Tello['tello_move_back'] = function(block) {
-  var distance = block.getFieldValue('DISTANCE');
+Blockly.Tello.forBlock['tello_move_back'] = function(block, generator) {
+  var distance = generator.getFieldValue(block, 'DISTANCE');
   return '{"type":"move_back","distance":' + distance + '}\n';
 };
 
-Blockly.Tello['tello_move_left'] = function(block) {
-  var distance = block.getFieldValue('DISTANCE');
+Blockly.Tello.forBlock['tello_move_left'] = function(block, generator) {
+  var distance = generator.getFieldValue(block, 'DISTANCE');
   return '{"type":"move_left","distance":' + distance + '}\n';
 };
 
-Blockly.Tello['tello_move_right'] = function(block) {
-  var distance = block.getFieldValue('DISTANCE');
+Blockly.Tello.forBlock['tello_move_right'] = function(block, generator) {
+  var distance = generator.getFieldValue(block, 'DISTANCE');
   return '{"type":"move_right","distance":' + distance + '}\n';
 };
 
-Blockly.Tello['tello_move_up'] = function(block) {
-  var distance = block.getFieldValue('DISTANCE');
+Blockly.Tello.forBlock['tello_move_up'] = function(block, generator) {
+  var distance = generator.getFieldValue(block, 'DISTANCE');
   return '{"type":"move_up","distance":' + distance + '}\n';
 };
 
-Blockly.Tello['tello_move_down'] = function(block) {
-  var distance = block.getFieldValue('DISTANCE');
+Blockly.Tello.forBlock['tello_move_down'] = function(block, generator) {
+  var distance = generator.getFieldValue(block, 'DISTANCE');
   return '{"type":"move_down","distance":' + distance + '}\n';
 };
 
 // 回転
-Blockly.Tello['tello_rotate_cw'] = function(block) {
-  var degrees = block.getFieldValue('DEGREES');
+Blockly.Tello.forBlock['tello_rotate_cw'] = function(block, generator) {
+  var degrees = generator.getFieldValue(block, 'DEGREES');
   return '{"type":"rotate_cw","degrees":' + degrees + '}\n';
 };
 
-Blockly.Tello['tello_rotate_ccw'] = function(block) {
-  var degrees = block.getFieldValue('DEGREES');
+Blockly.Tello.forBlock['tello_rotate_ccw'] = function(block, generator) {
+  var degrees = generator.getFieldValue(block, 'DEGREES');
   return '{"type":"rotate_ccw","degrees":' + degrees + '}\n';
 };
 
 // 待機
-Blockly.Tello['tello_wait'] = function(block) {
-  var milliseconds = block.getFieldValue('MILLISECONDS');
+Blockly.Tello.forBlock['tello_wait'] = function(block, generator) {
+  var milliseconds = generator.getFieldValue(block, 'MILLISECONDS');
   return '{"type":"wait","milliseconds":' + milliseconds + '}\n';
 };
 
 // 条件分岐
-Blockly.Tello['tello_if_altitude'] = function(block) {
-  var threshold = block.getFieldValue('THRESHOLD');
-  var operator = block.getFieldValue('OPERATOR');
-  var trueBranch = Blockly.Tello.statementToCode(block, 'TRUE_BRANCH');
-  var falseBranch = Blockly.Tello.statementToCode(block, 'FALSE_BRANCH');
+Blockly.Tello.forBlock['tello_if_altitude'] = function(block, generator) {
+  var threshold = generator.getFieldValue(block, 'THRESHOLD');
+  var operator = generator.getFieldValue(block, 'OPERATOR');
+  var trueBranch = generator.statementToCode(block, 'TRUE_BRANCH');
+  var falseBranch = generator.statementToCode(block, 'FALSE_BRANCH');
   
   var trueCommands = trueBranch ? parseStatements(trueBranch) : [];
   var falseCommands = falseBranch ? parseStatements(falseBranch) : [];
@@ -88,9 +88,9 @@ Blockly.Tello['tello_if_altitude'] = function(block) {
 };
 
 // 繰り返し
-Blockly.Tello['tello_repeat'] = function(block) {
-  var times = block.getFieldValue('TIMES');
-  var body = Blockly.Tello.statementToCode(block, 'BODY');
+Blockly.Tello.forBlock['tello_repeat'] = function(block, generator) {
+  var times = generator.getFieldValue(block, 'TIMES');
+  var body = generator.statementToCode(block, 'BODY');
   
   var bodyCommands = body ? parseStatements(body) : [];
   
