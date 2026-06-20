@@ -79,8 +79,8 @@ fun simulateCommands(commands: List<BlocklyCommand>): List<DroneState> {
             is BlocklyCommand.RotateCCW -> current.copy(heading = current.heading - command.degrees)
             is BlocklyCommand.Wait -> current
             is BlocklyCommand.IfAltitude -> {
+                // シミュレーション: true分岐のみ実行
                 command.trueBranch.forEach { processCommand(it) }
-                command.falseBranch.forEach { processCommand(it) }
                 current
             }
             is BlocklyCommand.Repeat -> {

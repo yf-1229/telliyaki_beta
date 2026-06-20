@@ -6,17 +6,18 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.telliyaki.blockly.BlocklyBridge
-import com.telliyaki.blockly.BlocklyJsonParser
-import com.telliyaki.executor.CommandExecutor
+import com.telliyaki.blockeditor.BlockWorkspaceViewModel
+import com.telliyaki.data.BlocklyCommand
 import com.telliyaki.network.TelloUdpClient
 import com.telliyaki.storage.ProgramStorage
-import com.telliyaki.ui.screen.BlocklyScreen
+import com.telliyaki.ui.screen.BlockEditorScreen
 import com.telliyaki.ui.screen.ExecutionScreen
 import com.telliyaki.ui.screen.PreviewScreen
 import com.telliyaki.ui.screen.ProgramListScreen
@@ -39,12 +40,8 @@ fun AppNavHost(
     navController: NavHostController,
     modifier: Modifier = Modifier
 ) {
-    val bridge = remember { BlocklyBridge() }
-    val parser = remember { BlocklyJsonParser() }
     val validator = remember { ProgramValidator() }
     val telloClient = remember { TelloUdpClient() }
-    val executor = remember { CommandExecutor(telloClient) }
-    val executionViewModel = remember { ExecutionViewModel(telloClient) }
 
     NavHost(
         navController = navController,
@@ -64,7 +61,7 @@ fun AppNavHost(
         }
 
         composable(route = Routes.PROGRAM_LIST) {
-            val context = androidx.compose.ui.platform.LocalContext.current
+            val context = LocalContext.current
             val storage = remember { ProgramStorage(context) }
 
             ProgramListScreen(
@@ -81,22 +78,22 @@ fun AppNavHost(
             arguments = listOf(navArgument("programName") { type = NavType.StringType })
         ) { backStackEntry ->
             val programName = backStackEntry.arguments?.getString("programName") ?: "プログラム"
-            val context = androidx.compose.ui.platform.LocalContext.current
+            val context = LocalContext.current
             val storage = remember { ProgramStorage(context) }
+            val blockWorkspaceViewModel: BlockWorkspaceViewModel = viewModel()
 
-            BlocklyScreen(
-                bridge = bridge,
+            BlockEditorScreen(
+                viewModel = blockWorkspaceViewModel,
                 storage = storage,
                 validator = validator,
-                parser = parser,
+                telloClient = telloClient,
+                programName = programName,
                 onBackClick = { navController.popBackStack() },
-                onPreviewClick = { json ->
-                    val commands = parser.parse(json)
+                onPreviewClick = { commands ->
                     navController.currentBackStackEntry?.savedStateHandle?.set("commands", commands)
                     navController.navigate(Routes.PREVIEW)
                 },
-                onExecuteClick = { json ->
-                    val commands = parser.parse(json)
+                onExecuteClick = { commands ->
                     navController.currentBackStackEntry?.savedStateHandle?.set("commands", commands)
                     navController.navigate(Routes.EXECUTION)
                 }
@@ -106,16 +103,16 @@ fun AppNavHost(
         composable(route = Routes.PREVIEW) {
             val commands = navController.previousBackStackEntry
                 ?.savedStateHandle
-                ?.get<List<com.telliyaki.data.BlocklyCommand>>("commands")
+                ?.get<List<BlocklyCommand>>("commands")
                 ?: emptyList()
 
             PreviewScreen(
                 commands = commands,
                 onBackClick = { navController.popBackStack() },
                 onExecuteClick = {
-                    navController.navigate(Routes.EXECUTION) {
-                        popUpTo(Routes.BLOCKLY)
-                    }
+                    // Save commands before navigating to Execution
+                    navController.currentBackStackEntry?.savedStateHandle?.set("commands", commands)
+                    navController.navigate(Routes.EXECUTION)
                 }
             )
         }
@@ -123,8 +120,9 @@ fun AppNavHost(
         composable(route = Routes.EXECUTION) {
             val commands = navController.previousBackStackEntry
                 ?.savedStateHandle
-                ?.get<List<com.telliyaki.data.BlocklyCommand>>("commands")
+                ?.get<List<BlocklyCommand>>("commands")
                 ?: emptyList()
+            val executionViewModel: ExecutionViewModel = viewModel()
 
             ExecutionScreen(
                 commands = commands,

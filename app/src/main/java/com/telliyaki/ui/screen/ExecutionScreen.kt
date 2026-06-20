@@ -48,8 +48,8 @@ fun ExecutionScreen(
     val listState = rememberLazyListState()
     val batteryLevel = executionViewModel.batteryLevel
 
-    LaunchedEffect(Unit) {
-        executionViewModel.executeCommands(commands)
+    LaunchedEffect(commands) {
+        executionViewModel.startExecution(commands)
     }
 
     LaunchedEffect(executionViewModel.logs.size) {
@@ -58,18 +58,20 @@ fun ExecutionScreen(
         }
     }
 
-    val borderColor = when {
-        batteryLevel <= 20 -> Color.Red
-        batteryLevel <= 40 -> Color.Yellow
-        else -> Color.Transparent
+    val borderModifier = if (batteryLevel <= 40) {
+        val borderColor = when {
+            batteryLevel <= 20 -> Color.Red
+            else -> Color.Yellow
+        }
+        Modifier.border(4.dp, borderColor)
+    } else {
+        Modifier
     }
-
-    val borderWidth = if (batteryLevel <= 40) 4.dp else 0.dp
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .border(borderWidth, borderColor)
+            .then(borderModifier)
     ) {
         Scaffold(
             topBar = {

@@ -1,15 +1,9 @@
 package com.telliyaki.network
 
 import android.util.Log
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 
 class TelloUdpClient {
-    private val _isConnected = MutableStateFlow(false)
-    val isConnected: StateFlow<Boolean> = _isConnected
-
-    private val _currentHeight = MutableStateFlow(0)
-    val currentHeight: StateFlow<Int> = _currentHeight
+    private var currentHeight = 0
 
     private val TAG = "TelloUdpClient"
 
@@ -18,22 +12,21 @@ class TelloUdpClient {
     // private val telloIp = "192.168.10.1"
     // private val telloPort = 8889
 
-    suspend fun connect() {
-        Log.d(TAG, "Connecting to Tello...")
-        // TODO: UDP ソケットを開き、command モードに入る
-        // socket = DatagramSocket()
-        // sendRaw("command")
-        _isConnected.value = true
-        Log.d(TAG, "Connected to Tello (stub)")
-    }
-
-    fun disconnect() {
-        Log.d(TAG, "Disconnecting from Tello...")
-        // TODO: ソケットを閉じる
-        // socket?.close()
-        // socket = null
-        _isConnected.value = false
-        Log.d(TAG, "Disconnected from Tello (stub)")
+    /**
+     * Tello実機への接続状態を確認
+     * 現在はスタブ実装（常に false）
+     * TODO: UDPでbattery?コマンドを送信し、応答があるか確認する
+     */
+    fun isConnected(): Boolean {
+        // TODO: 実機接続時に UDP 接続テストを実装
+        // return try {
+        //     sendRaw("battery?")
+        //     val response = receiveResponse(timeout = 1000)
+        //     response != null && response.toIntOrNull() != null
+        // } catch (e: Exception) {
+        //     false
+        // }
+        return false
     }
 
     fun sendCommand(command: String) {
@@ -55,7 +48,7 @@ class TelloUdpClient {
         // return response.toIntOrNull() ?: 0
 
         // スタブ: 現在のシミュレーション高度を返す
-        return _currentHeight.value
+        return currentHeight
     }
 
     fun queryBattery(): Int {
@@ -80,20 +73,20 @@ class TelloUdpClient {
         val parts = command.split(" ")
         when (parts[0]) {
             "takeoff" -> {
-                _currentHeight.value = 50
+                currentHeight = 50
             }
             "land" -> {
-                _currentHeight.value = 0
+                currentHeight = 0
             }
             "up" -> {
                 val distance = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                _currentHeight.value += distance
+                currentHeight += distance
             }
             "down" -> {
                 val distance = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                _currentHeight.value = (_currentHeight.value - distance).coerceAtLeast(0)
+                currentHeight = (currentHeight - distance).coerceAtLeast(0)
             }
         }
-        Log.d(TAG, "Simulated height: ${_currentHeight.value}cm")
+        Log.d(TAG, "Simulated height: ${currentHeight}cm")
     }
 }
