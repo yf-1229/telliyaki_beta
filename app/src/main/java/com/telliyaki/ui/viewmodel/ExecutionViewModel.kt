@@ -5,11 +5,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import com.telliyaki.data.BlocklyCommand
+import com.telliyaki.network.TelloException
 import com.telliyaki.network.TelloUdpClient
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class ExecutionViewModel(
     private val telloClient: TelloUdpClient = TelloUdpClient()
@@ -26,9 +30,11 @@ class ExecutionViewModel(
     var batteryLevel by mutableStateOf(100)
         private set
 
+    @Volatile
     private var emergencyFlag = false
     private var batteryMonitorJob: Job? = null
     private var executionJob: Job? = null
+    private val logMutex = Mutex()
 
     fun startExecution(commands: List<BlocklyCommand>) {
         if (isExecuting) return
@@ -44,6 +50,19 @@ class ExecutionViewModel(
         emergencyFlag = false
         logs = emptyList()
 
+        // Tello に接続（command モードへ移行）
+        try {
+            addLog("Tello に接続中...")
+            telloClient.connect()
+            addLog("Tello に接続しました")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            addLog("Tello への接続に失敗しました: ${e.message}")
+            isExecuting = false
+            return
+        }
+
         // バッテリー監視を開始
         startBatteryMonitor()
 
@@ -53,7 +72,14 @@ class ExecutionViewModel(
                     addLog("緊急停止されました")
                     break
                 }
-                executeCommand(command)
+                try {
+                    executeCommand(command)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: TelloException) {
+                    addLog("通信エラー: ${e.message}")
+                    break
+                }
             }
 
             if (!emergencyFlag) {
@@ -63,16 +89,30 @@ class ExecutionViewModel(
             // バッテリー監視を停止
             stopBatteryMonitor()
             isExecuting = false
+            // disconnect は onCleared で行う（接続状態を維持）
         }
     }
 
     private fun startBatteryMonitor() {
         batteryMonitorJob?.cancel()
-        batteryLevel = telloClient.queryBattery()
         batteryMonitorJob = viewModelScope.launch {
+            // 初回クエリを即座に実行（失敗時はデフォルト値のまま）
+            try {
+                batteryLevel = telloClient.queryBattery()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // 初回取得失敗は継続
+            }
             while (true) {
                 delay(30_000) // 30秒ごとに更新
-                batteryLevel = telloClient.queryBattery()
+                try {
+                    batteryLevel = telloClient.queryBattery()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // バッテリー取得失敗は続行（次回再試行）
+                }
             }
         }
     }
@@ -87,22 +127,53 @@ class ExecutionViewModel(
 
         addLog("実行中: ${command.toDisplayString()}")
 
-        // TODO: 実際のTelloへのUDP送信をここに実装
         when (command) {
-            is BlocklyCommand.TakeOff -> delay(2000)
-            is BlocklyCommand.Land -> delay(2000)
-            is BlocklyCommand.MoveForward -> delay((command.distance * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.MoveBack -> delay((command.distance * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.MoveLeft -> delay((command.distance * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.MoveRight -> delay((command.distance * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.MoveUp -> delay((command.distance * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.MoveDown -> delay((command.distance * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.RotateCW -> delay((command.degrees * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.RotateCCW -> delay((command.degrees * 10L).coerceAtLeast(500L))
-            is BlocklyCommand.Wait -> delay(command.milliseconds.toLong())
+            is BlocklyCommand.TakeOff -> {
+                sendCommandChecked("takeoff")
+                cancellableDelay(2000)
+            }
+            is BlocklyCommand.Land -> {
+                sendCommandChecked("land")
+                cancellableDelay(2000)
+            }
+            is BlocklyCommand.MoveForward -> {
+                sendCommandChecked("forward ${command.distance}")
+                cancellableDelay((command.distance * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.MoveBack -> {
+                sendCommandChecked("back ${command.distance}")
+                cancellableDelay((command.distance * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.MoveLeft -> {
+                sendCommandChecked("left ${command.distance}")
+                cancellableDelay((command.distance * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.MoveRight -> {
+                sendCommandChecked("right ${command.distance}")
+                cancellableDelay((command.distance * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.MoveUp -> {
+                sendCommandChecked("up ${command.distance}")
+                cancellableDelay((command.distance * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.MoveDown -> {
+                sendCommandChecked("down ${command.distance}")
+                cancellableDelay((command.distance * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.RotateCW -> {
+                sendCommandChecked("cw ${command.degrees}")
+                cancellableDelay((command.degrees * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.RotateCCW -> {
+                sendCommandChecked("ccw ${command.degrees}")
+                cancellableDelay((command.degrees * 10L).coerceAtLeast(500L))
+            }
+            is BlocklyCommand.Wait -> cancellableDelay(command.milliseconds.toLong())
             is BlocklyCommand.IfAltitude -> {
-                // シミュレーション: 常にtrue分岐を実行
-                for (cmd in command.trueBranch) {
+                val currentHeight = telloClient.queryHeight()
+                val condition = evaluateCondition(currentHeight, command.threshold, command.operator)
+                val branch = if (condition) command.trueBranch else command.falseBranch
+                for (cmd in branch) {
                     if (emergencyFlag) break
                     executeCommand(cmd)
                 }
@@ -124,7 +195,40 @@ class ExecutionViewModel(
             }
         }
 
-        addLog("完了: ${command.toDisplayString()}")
+        if (!emergencyFlag) {
+            addLog("完了: ${command.toDisplayString()}")
+        }
+    }
+
+    private fun evaluateCondition(current: Int, threshold: Int, operator: String): Boolean {
+        return when (operator) {
+            "GT" -> current > threshold
+            "LT" -> current < threshold
+            "GE" -> current >= threshold
+            "LE" -> current <= threshold
+            else -> false
+        }
+    }
+
+    /**
+     * コマンドを送信し、応答が "ok" であることを検証する。
+     * "error" や予期しない応答の場合は [TelloException] を投げ、
+     * 呼び出し元の try/catch で処理を中断できるようにする。
+     */
+    private suspend fun sendCommandChecked(command: String) {
+        val response = telloClient.sendCommand(command)
+        if (response != "ok") {
+            throw TelloException("コマンド拒否: $command (response=$response)")
+        }
+    }
+
+    private suspend fun cancellableDelay(totalMillis: Long) {
+        val chunk = 100L
+        var remaining = totalMillis
+        while (remaining > 0) {
+            delay(minOf(chunk, remaining))
+            remaining -= chunk
+        }
     }
 
     fun emergencyStop() {
@@ -136,8 +240,10 @@ class ExecutionViewModel(
         telloClient.emergency()
     }
 
-    private fun addLog(message: String) {
-        logs = logs + message
+    private suspend fun addLog(message: String) {
+        logMutex.withLock {
+            logs = logs + message
+        }
     }
 
     fun clearLogs() {
@@ -148,8 +254,16 @@ class ExecutionViewModel(
         super.onCleared()
         if (isExecuting && !isEmergencyStopped) {
             telloClient.emergency()
+            // emergency パケットがカーネル送信バッファから確実に送出されるよう
+            // ソケットクローズ前に短い待機を入れる
+            try {
+                Thread.sleep(50)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
         }
         stopBatteryMonitor()
         executionJob?.cancel()
+        telloClient.disconnect()
     }
 }
